@@ -4,19 +4,22 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity: FlutterActivity() {
+class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.app/events"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
+        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.example.app/events")
 
-        // Listen for events coming from the Accessibility Service
         MyAccessibilityService.onEventCaptured = { text ->
-            // Use runOnUiThread to ensure Flutter gets the data on the main thread
+            // Use a metered check to ensure the engine is still attached
             runOnUiThread {
-                channel.invokeMethod("onKeyStroke", text)
+                try {
+                    channel.invokeMethod("onKeyStroke", text)
+                } catch (e: Exception) {
+                    // Flutter is likely in the background or killed
+                }
             }
         }
     }

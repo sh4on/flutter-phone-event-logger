@@ -34,15 +34,7 @@ class EventLogger extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("My Private Event Log"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.send),
-            onPressed: controller.sendLogFile,
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text("My Private Event Log")),
       body: Obx(
         () => ListView.builder(
           itemCount: controller.logs.length,
