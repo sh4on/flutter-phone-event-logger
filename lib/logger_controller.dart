@@ -4,8 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 
-class LoggerController extends GetxController {
-  // matches the channel name in your Android native code
+class LoggerController extends GetxController with WidgetsBindingObserver {
   static const platform = MethodChannel('com.example.app/events');
 
   var logs = <String>[].obs;
@@ -13,36 +12,49 @@ class LoggerController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    WidgetsBinding.instance.addObserver(this);
     _initMethodChannel();
+    _loadLogsFromFile(); // Show existing logs on startup
+  }
+
+  @override
+  void onClose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.onClose();
+  }
+
+  // Called whenever app comes back to foreground
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadLogsFromFile();
+    }
   }
 
   void _initMethodChannel() {
     platform.setMethodCallHandler((call) async {
       if (call.method == "onKeyStroke") {
-        String entry = "${DateTime.now()}: ${call.arguments}";
-
+        final entry = "${DateTime.now()}: ${call.arguments}";
+        debugPrint("Received from native: $entry");
         logs.insert(0, entry);
-
-        await _saveToFile(entry);
       }
     });
   }
 
-  // appends logs to the shared file.
-  // kotlin reads this exact file from the app's internal directory.
-  // inside LoggerController.dart
-  Future<void> _saveToFile(String text) async {
+  // Reads what Kotlin wrote to disk — the source of truth
+  Future<void> _loadLogsFromFile() async {
     try {
-      final directory = await getApplicationSupportDirectory();
+      final dir = await getApplicationDocumentsDirectory();
+      // Resolve to the same 'files' dir that Kotlin's filesDir points to
+      final filesDir = dir.path.replaceFirst('/app_flutter', '');
+      final file = File('$filesDir/../files/security_logs.txt');
 
-      // use a path that Kotlin definitely sees:
-      final path =
-          "${directory.path.replaceFirst('app_flutter', 'files')}/security_logs.txt";
-      final file = File(path);
-
-      await file.writeAsString('$text\n', mode: FileMode.append);
+      if (await file.exists()) {
+        final lines = await file.readAsLines();
+        logs.assignAll(lines.reversed.toList()); // newest first
+      }
     } catch (e) {
-      debugPrint("File Save Error: $e");
+      debugPrint("File load error: $e");
     }
   }
 }

